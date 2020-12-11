@@ -255,7 +255,6 @@ var _ = Describe("K8sDatapathConfig", func() {
 			deploymentManager.DeployCilium(map[string]string{
 				"tunnel":                 "vxlan",
 				"endpointRoutes.enabled": "true",
-				"hostFirewall":           "false",
 			}, DeployCiliumOptionsAndDNS)
 			Expect(testPodConnectivityAcrossNodes(kubectl)).Should(BeTrue(), "Connectivity test between nodes failed")
 
@@ -310,7 +309,6 @@ var _ = Describe("K8sDatapathConfig", func() {
 				"tunnel":                 "disabled",
 				"k8s.requireIPv4PodCIDR": "true",
 				"endpointRoutes.enabled": "true",
-				"hostFirewall":           "false",
 			}, DeployCiliumOptionsAndDNS)
 
 			Expect(testPodConnectivityAcrossNodes(kubectl)).Should(BeTrue(), "Connectivity test between nodes failed")
@@ -348,7 +346,6 @@ var _ = Describe("K8sDatapathConfig", func() {
 				"autoDirectNodeRoutes":   "true",
 				"endpointRoutes.enabled": "true",
 				"ipv6.enabled":           "false",
-				"hostFirewall":           "false",
 			}
 			// Needed to bypass bug with masquerading when devices are set. See #12141.
 			if helpers.RunsWithKubeProxy() {
@@ -642,10 +639,6 @@ var _ = Describe("K8sDatapathConfig", func() {
 				"ipv4.enabled": "true",
 				"ipv6.enabled": "false",
 				"hostFirewall": "true",
-				// We need the default GKE config. except for per-endpoint
-				// routes (incompatible with host firewall for now).
-				"gke.enabled": "false",
-				"tunnel":      "disabled",
 			}, DeployCiliumOptionsAndDNS)
 			Expect(testPodConnectivityAcrossNodes(kubectl)).Should(BeTrue(), "Connectivity test between nodes failed")
 		})
@@ -657,18 +650,39 @@ var _ = Describe("K8sDatapathConfig", func() {
 			testHostFirewall(kubectl)
 		})
 
+		SkipItIf(helpers.RunsOnGKE, "With VXLAN and endpoint routes", func() {
+			deploymentManager.DeployCilium(map[string]string{
+				"hostFirewall":           "true",
+				"endpointRoutes.enabled": "true",
+			}, DeployCiliumOptionsAndDNS)
+			testHostFirewall(kubectl)
+		})
+
 		// We need to skip this test when using kube-proxy because of #14859.
 		SkipItIf(helpers.RunsWithKubeProxy, "With native routing", func() {
 			options := map[string]string{
 				"hostFirewall": "true",
 				"tunnel":       "disabled",
 			}
-			// We can't rely on gke.enabled because it enables
-			// per-endpoint routes which are incompatible with
-			// the host firewall.
+			// We don't want to run with per-endpoint routes (enabled by
+			// gke.enabled) for this test.
 			if helpers.RunsOnGKE() {
 				options["gke.enabled"] = "false"
 			} else {
+				options["autoDirectNodeRoutes"] = "true"
+			}
+			deploymentManager.DeployCilium(options, DeployCiliumOptionsAndDNS)
+			testHostFirewall(kubectl)
+		})
+
+		// We need to skip this test when using kube-proxy because of #14859.
+		SkipItIf(helpers.RunsWithKubeProxy, "With native routing and endpoint routes", func() {
+			options := map[string]string{
+				"hostFirewall":           "true",
+				"tunnel":                 "disabled",
+				"endpointRoutes.enabled": "true",
+			}
+			if !helpers.RunsOnGKE() {
 				options["autoDirectNodeRoutes"] = "true"
 			}
 			deploymentManager.DeployCilium(options, DeployCiliumOptionsAndDNS)

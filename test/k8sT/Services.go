@@ -1928,12 +1928,17 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 			})
 		})
 
-		SkipContextIf(helpers.RunsWithKubeProxyReplacement, "Tests NodePort (kube-proxy)", func() {
+		SkipContextIf(helpers.RunsWithoutKubeProxy, "Tests NodePort (kube-proxy)", func() {
+			AfterAll(func() {
+				DeployCiliumAndDNS(kubectl, ciliumFilename)
+			})
+
 			SkipItIf(helpers.DoesNotRunOnNetNextOr419Kernel, "with IPSec and externalTrafficPolicy=Local", func() {
 				deploymentManager.SetKubectl(kubectl)
 				deploymentManager.Deploy(helpers.CiliumNamespace, IPSecSecret)
 				DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
-					"encryption.enabled": "true",
+					"kubeProxyReplacement": "disabled",
+					"encryption.enabled":   "true",
 				})
 				testExternalTrafficPolicyLocal()
 				deploymentManager.DeleteAll()
@@ -1942,7 +1947,8 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 
 			It("with the host firewall and externalTrafficPolicy=Local", func() {
 				options := map[string]string{
-					"hostFirewall": "true",
+					"kubeProxyReplacement": "disabled",
+					"hostFirewall":         "true",
 				}
 				// We can't rely on gke.enabled because it enables
 				// per-endpoint routes which are incompatible with
@@ -1956,7 +1962,9 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 			})
 
 			It("with externalTrafficPolicy=Local", func() {
-				DeployCiliumAndDNS(kubectl, ciliumFilename)
+				DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
+					"kubeProxyReplacement": "disabled",
+				})
 				testExternalTrafficPolicyLocal()
 			})
 

@@ -114,11 +114,12 @@ func (s *ServiceCache) GetServiceIP(svcID ServiceID) *loadbalancer.L3n4Addr {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	svc := s.services[svcID]
-	if svc == nil {
+	if svc == nil || len(svc.FrontendIPs) == 0 {
 		return nil
 	}
+
 	for _, port := range svc.Ports {
-		return loadbalancer.NewL3n4Addr(port.Protocol, svc.FrontendIP, port.Port,
+		return loadbalancer.NewL3n4Addr(port.Protocol, svc.FrontendIPs[0], port.Port,
 			loadbalancer.ScopeExternal)
 	}
 	return nil
@@ -129,26 +130,26 @@ func (s *ServiceCache) GetServiceFrontendIP(svcID ServiceID, svcType loadbalance
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	svc := s.services[svcID]
-	if svc == nil || svc.Type != svcType {
+	if svc == nil || svc.Type != svcType || len(svc.FrontendIPs) == 0 {
 		return nil
 	}
 
-	return svc.FrontendIP
+	return svc.FrontendIPs[0]
 }
 
-// GetServiceAddrWithPortsAndType returns a slice of all the L3n4Addr that are backing the
+// GetServiceAddrsWithType returns a slice of all the L3n4Addr that are backing the
 // given Service ID with given type.
 // Note: The returned IPs are with External scope.
 func (s *ServiceCache) GetServiceAddrsWithType(svcID ServiceID, svcType loadbalancer.SVCType) map[loadbalancer.FEPortName]*loadbalancer.L3n4Addr {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	svc := s.services[svcID]
-	if svc == nil || svc.Type != svcType {
+	if svc == nil || svc.Type != svcType || len(svc.FrontendIPs) == 0 {
 		return nil
 	}
 	addrsByPort := make(map[loadbalancer.FEPortName]*loadbalancer.L3n4Addr)
 	for pName, l4Addr := range svc.Ports {
-		addrsByPort[pName] = loadbalancer.NewL3n4Addr(l4Addr.Protocol, svc.FrontendIP,
+		addrsByPort[pName] = loadbalancer.NewL3n4Addr(l4Addr.Protocol, svc.FrontendIPs[0],
 			l4Addr.Port, loadbalancer.ScopeExternal)
 	}
 	return addrsByPort
@@ -373,14 +374,17 @@ func (s *ServiceCache) UniqueServiceFrontends() FrontendList {
 	defer s.mutex.RUnlock()
 
 	for _, svc := range s.services {
-		for _, p := range svc.Ports {
-			address := loadbalancer.L3n4Addr{
-				IP:     svc.FrontendIP,
-				L4Addr: *p,
-				Scope:  loadbalancer.ScopeExternal,
+		for _, feIP := range svc.FrontendIPs {
+			for _, p := range svc.Ports {
+				address := loadbalancer.L3n4Addr{
+					IP:     feIP,
+					L4Addr: *p,
+					Scope:  loadbalancer.ScopeExternal,
+				}
+				uniqueFrontends[address.StringWithProtocol()] = struct{}{}
 			}
-			uniqueFrontends[address.StringWithProtocol()] = struct{}{}
 		}
+
 		for _, nodePortFEs := range svc.NodePorts {
 			for _, fe := range nodePortFEs {
 				if fe.Scope == loadbalancer.ScopeExternal {

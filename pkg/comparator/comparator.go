@@ -15,6 +15,8 @@
 package comparator
 
 import (
+	"net"
+
 	"github.com/kr/pretty"
 	"github.com/pmezard/go-difflib/difflib"
 )
@@ -116,5 +118,35 @@ func MapStringEqualsIgnoreKeys(m1, m2 map[string]string, ignoreKeys []string) bo
 	if len(m1)-ignoredM1 != len(m2)-ignoredM2 {
 		return false
 	}
+	return true
+}
+
+type netIPList []net.IP
+
+func (n netIPList) Contains(ip net.IP) bool {
+	for _, listIP := range n {
+		if listIP.Equal(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// IPListEqualsWithoutOrder returns true if the list of net.IP provided is same
+// without considering the order of the IPs in the list.
+func IPListEqualsWithoutOrder(ipList1, ipList2 []net.IP) bool {
+	if ((ipList1 == nil) != (ipList2 == nil)) ||
+		len(ipList1) != len(ipList2) {
+		return false
+	}
+
+	ipLookupList := netIPList(ipList2)
+	for _, ip := range ipList1 {
+		if !ipLookupList.Contains(ip) {
+			return false
+		}
+	}
+
 	return true
 }

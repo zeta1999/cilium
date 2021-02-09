@@ -15,6 +15,7 @@
 package utils
 
 import (
+	"net"
 	"sort"
 
 	slim_corev1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/api/core/v1"
@@ -159,4 +160,37 @@ func IsPodRunning(status slim_corev1.PodStatus) bool {
 		return false
 	}
 	return true
+}
+
+// IsIPv6 returns if netIP is IPv6.
+func IsIPv6(netIP net.IP) bool {
+	return netIP != nil && netIP.To4() == nil
+}
+
+// GetClusterIPByFamily returns a service clusterip by family.
+// From - https://github.com/kubernetes/kubernetes/blob/release-1.20/pkg/proxy/util/utils.go#L386-L411
+func GetClusterIPByFamily(ipFamily slim_corev1.IPFamily, service *slim_corev1.Service) string {
+	// allowing skew
+	if len(service.Spec.IPFamilies) == 0 {
+		if len(service.Spec.ClusterIP) == 0 || service.Spec.ClusterIP == v1.ClusterIPNone {
+			return ""
+		}
+
+		IsIPv6Family := (ipFamily == slim_corev1.IPv6Protocol)
+		if IsIPv6Family == IsIPv6(net.ParseIP(service.Spec.ClusterIP)) {
+			return service.Spec.ClusterIP
+		}
+
+		return ""
+	}
+
+	for idx, family := range service.Spec.IPFamilies {
+		if family == ipFamily {
+			if idx < len(service.Spec.ClusterIPs) {
+				return service.Spec.ClusterIPs[idx]
+			}
+		}
+	}
+
+	return ""
 }
